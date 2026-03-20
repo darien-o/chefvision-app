@@ -1,0 +1,1 @@
+# ChefVision components package
