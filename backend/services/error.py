@@ -23,3 +23,11 @@ class EmbeddingError(RecipeChunkingError):
 
 class EmbeddingDeletionError(RecipeChunkingError):
     """Raised when ChromaDB deletion of embeddings fails."""
+
+
+class ModelLoadError(RecipeChunkingError):
+    """Raised when the YOLO model fails to download or load from HuggingFace."""
+
+
+class DetectionError(RecipeChunkingError):
+    """Raised when YOLO inference fails on an image."""
