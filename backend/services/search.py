@@ -1,4 +1,10 @@
-"""Semantic search service for querying recipe chunks in ChromaDB."""
+"""Semantic search service for querying recipe chunks in ChromaDB.
+
+Uses a hybrid approach:
+1. ChromaDB vector similarity for semantic relevance
+2. Ingredient-match re-ranking to boost chunks that actually contain
+   the queried ingredients
+"""
 
 from __future__ import annotations
 
@@ -11,6 +17,23 @@ from backend.services.vector_store import _get_collection
 
 logger = logging.getLogger(__name__)
 
+# Weight for ingredient matching vs semantic similarity in final score.
+# 0.6 means 60% ingredient match + 40% semantic similarity.
+INGREDIENT_WEIGHT = 0.6
+SEMANTIC_WEIGHT = 0.4
+
+
+def _ingredient_match_ratio(text: str, ingredients: list[str]) -> float:
+    """Return fraction of *ingredients* found in *text* (case-insensitive).
+
+    Returns 0.0 if no ingredients match, 1.0 if all match.
+    """
+    if not ingredients:
+        return 0.0
+    lower = text.lower()
+    matches = sum(1 for ing in ingredients if ing.lower() in lower)
+    return matches / len(ingredients)
+
 
 def search_recipes(
     query_terms: list[str],
@@ -19,17 +42,20 @@ def search_recipes(
 ) -> list[SearchResult]:
     """Search ChromaDB for recipe chunks matching the given query terms.
 
-    Fetches more results than needed, then randomly samples from the top
-    candidates to add variety across requests.
+    Strategy:
+    1. Fetch a large pool of candidates via semantic search.
+    2. Re-rank using a hybrid score that combines semantic similarity
+       with an ingredient-match ratio (how many queried ingredients
+       actually appear in the chunk text).
+    3. Add light randomization among top candidates for variety.
 
     Args:
         query_terms: List of ingredient names (translated) to search for.
-        top_k: Maximum number of results to return. Defaults to settings.TOP_K.
-        min_relevance: Minimum relevance score threshold. Defaults to settings.MIN_RELEVANCE_SCORE.
+        top_k: Maximum number of results to return.
+        min_relevance: Minimum *semantic* relevance threshold.
 
     Returns:
-        A list of SearchResult ordered by relevance score (descending),
-        filtered by min_relevance and limited to top_k entries.
+        A list of SearchResult ordered by hybrid score (descending).
     """
     if not query_terms:
         return []
@@ -41,8 +67,8 @@ def search_recipes(
 
     query_string = f"receta con {', '.join(query_terms)}"
 
-    # Fetch extra candidates so we can shuffle and still return top_k
-    fetch_k = min(top_k * 3, 60)
+    # Fetch a large candidate pool — we'll re-rank aggressively.
+    fetch_k = min(top_k * 5, 100)
 
     collection = _get_collection()
     results = collection.query(
@@ -57,10 +83,17 @@ def search_recipes(
     distances = results.get("distances", [[]])[0]
 
     for doc, metadata, distance in zip(documents, metadatas, distances):
-        relevance_score = 1.0 / (1.0 + distance)
+        semantic_score = 1.0 / (1.0 + distance)
 
-        if relevance_score < min_relevance:
+        if semantic_score < min_relevance:
             continue
+
+        # Hybrid score: ingredient match + semantic similarity
+        match_ratio = _ingredient_match_ratio(doc, query_terms)
+        hybrid_score = (
+            INGREDIENT_WEIGHT * match_ratio
+            + SEMANTIC_WEIGHT * semantic_score
+        )
 
         search_results.append(
             SearchResult(
@@ -68,15 +101,17 @@ def search_recipes(
                 source_filename=metadata.get("source_filename", ""),
                 page_number=metadata.get("page_number", 0),
                 chunk_index=metadata.get("chunk_index", 0),
-                relevance_score=relevance_score,
+                relevance_score=round(hybrid_score, 4),
             )
         )
 
-    # Shuffle among candidates to add variety, then sort by relevance
+    # Sort by hybrid score descending
+    search_results.sort(key=lambda r: r.relevance_score, reverse=True)
+
+    # Light shuffle among top candidates for variety
     if len(search_results) > top_k:
-        # Keep top 3 always, shuffle the rest and pick from them
         top_fixed = search_results[:3]
-        rest = search_results[3:]
+        rest = search_results[3 : top_k * 2]
         random.shuffle(rest)
         search_results = top_fixed + rest
 

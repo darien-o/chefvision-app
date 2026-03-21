@@ -19,8 +19,8 @@ class Setting(BaseSettings):
 
   EMBEDDING_MODEL: str = "mxbai-embed-large"
 
-  TOP_K: int = 20
-  MIN_RELEVANCE_SCORE: float = 0.4
+  TOP_K: int = 10
+  MIN_RELEVANCE_SCORE: float = 0.3
 
   CHUNK_SIZE: int = 2500
   CHUNK_OVERLAP: int = 300

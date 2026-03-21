@@ -313,8 +313,8 @@ def _display_results():
                 for i, chunk in enumerate(debug_chunks):
                     st.text_area(
                         f"Chunk {i + 1}",
-                        value=chunk[:600],
-                        height=120,
+                        value=chunk,
+                        height=400,
                         disabled=True,
                         key=f"debug_chunk_{i}",
                     )

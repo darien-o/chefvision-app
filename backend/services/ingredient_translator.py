@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 # Static dictionary for common ingredients
 _FALLBACK_DICTIONARY: dict[str, str] = {
-    "apple": "manzana", "banana": "plátano", "orange": "naranja",
+    "apple": "manzana", "banana": "banano", "orange": "naranja",
     "lemon": "limón", "strawberry": "fresa", "grape": "uva",
     "pineapple": "piña", "watermelon": "sandía", "mango": "mango",
     "peach": "melocotón", "pear": "pera", "cherry": "cereza",
