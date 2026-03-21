@@ -10,6 +10,8 @@ from backend.api.models import (
     DetectedIngredient,
     DetectionResponse,
     FileInfo,
+    GenerateRecipeRequest,
+    GenerateRecipeResponse,
     IngestionResponse,
     RecipeResult,
     RecipeSearchRequest,
@@ -26,6 +28,7 @@ from backend.services.error import (
 )
 from backend.services.ingredient_translator import IngredientTranslator
 from backend.services.ingestion import ingest_pdf
+from backend.services.recipe_generator import generate_recipe
 from backend.services.search import search_recipes as search_recipes_service
 from backend.services.vector_store import delete_embeddings, has_embeddings
 from backend.services.yolo_detector import YOLODetector
@@ -217,4 +220,47 @@ async def search_recipes(request: RecipeSearchRequest) -> RecipeSearchResponse:
     ]
 
     return RecipeSearchResponse(results=recipe_results, query_terms=query_terms)
+
+
+@router.post("/generate-recipe")
+async def generate_recipe_endpoint(request: GenerateRecipeRequest) -> GenerateRecipeResponse:
+    """Search for relevant recipe chunks, then generate a recipe with the LLM."""
+    translated = _translator.translate_batch(request.ingredients_en)
+    query_terms = [t.name_es for t in translated]
+
+    results = search_recipes_service(
+        query_terms=query_terms,
+        top_k=request.top_k,
+    )
+
+    chunk_texts = [r.text for r in results]
+
+    # Use provided Spanish names or fall back to translated ones
+    ingredients_es = request.ingredients_es if request.ingredients_es else query_terms
+
+    recipe_text = generate_recipe(
+        ingredients_es=ingredients_es,
+        ingredients_en=request.ingredients_en,
+        meal_type=request.meal_type,
+        recipe_chunks=chunk_texts,
+    )
+
+    recipe_results = [
+        RecipeResult(
+            text=r.text,
+            source_filename=r.source_filename,
+            page_number=r.page_number,
+            relevance_score=r.relevance_score,
+        )
+        for r in results[:3]
+    ]
+
+    # Include raw chunks in debug mode
+    debug_chunks = chunk_texts[:5] if settings.DEBUG_MODE else None
+
+    return GenerateRecipeResponse(
+        recipe=recipe_text,
+        source_chunks=recipe_results,
+        debug_chunks=debug_chunks,
+    )
 

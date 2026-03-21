@@ -17,14 +17,14 @@ class Setting(BaseSettings):
   LLM_BASE_URL: str = "http://localhost:11434/v1"
   LLM_MODEL: str = "gemma3:4b"
 
-  EMBEDDING_MODEL: str = "text-embedding3-small"
+  EMBEDDING_MODEL: str = "mxbai-embed-large"
 
   TOP_K: int = 20
   MIN_RELEVANCE_SCORE: float = 0.4
 
-  CHUNK_SIZE: int = 1000
-  CHUNK_OVERLAP: int = 200
-  RECIPE_THRESHOLD: int = 5
+  CHUNK_SIZE: int = 2500
+  CHUNK_OVERLAP: int = 300
+  RECIPE_THRESHOLD: int = 3
 
   # YOLO model settings
   YOLO_MODEL_REPO: str = "darien-or/chefVision"
@@ -33,6 +33,9 @@ class Setting(BaseSettings):
 
   # Translation settings
   INGREDIENT_DICT_PATH: Path | None = None
+
+  # Debug mode — shows raw chunks in the UI
+  DEBUG_MODE: bool = True
 
   class Config:
     env_file = ".env"

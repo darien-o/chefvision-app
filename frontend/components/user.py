@@ -182,7 +182,7 @@ def show_user():
     with col_clear:
         if st.button("🔄 Reiniciar", use_container_width=True):
             for k in list(st.session_state.keys()):
-                if k.startswith("food_") or k in ("recipe_results", "detected_ingredients", "search_result"):
+                if k.startswith("food_") or k in ("recipe_results", "detected_ingredients", "search_result", "generated_recipe"):
                     del st.session_state[k]
             st.rerun()
 
@@ -215,24 +215,34 @@ def show_user():
                     all_ingredients.append(ingredient)
 
         # Store results in session_state so they survive reruns
+        # Deduplicate ingredients by name, keeping highest confidence
+        seen: dict[str, dict] = {}
+        for ing in all_ingredients:
+            name = ing.get("name_en", "").lower()
+            if name not in seen or ing.get("confidence", 0) > seen[name].get("confidence", 0):
+                seen[name] = ing
+        all_ingredients = list(seen.values())
+
         st.session_state.detected_ingredients = all_ingredients
 
         if all_ingredients:
-            ingredient_names = [ing.get("name_en", "") for ing in all_ingredients if ing.get("name_en")]
+            ingredient_names_en = [ing.get("name_en", "") for ing in all_ingredients if ing.get("name_en")]
+            ingredient_names_es = [ing.get("name_es", "") for ing in all_ingredients if ing.get("name_es")]
 
-            with st.spinner("Buscando recetas que coincidan…"):
+            with st.spinner("🧑‍🍳 Generando receta personalizada con IA…"):
                 try:
-                    search_result = api_client.search_recipes(
-                        ingredient_names,
-                        st.session_state.selected_meal,
+                    gen_result = api_client.generate_recipe(
+                        ingredients_en=ingredient_names_en,
+                        ingredients_es=ingredient_names_es,
+                        meal_type=st.session_state.selected_meal,
                     )
                 except Exception as e:
-                    st.error(f"Error al buscar recetas: {e}")
-                    search_result = None
+                    st.error(f"Error al generar receta: {e}")
+                    gen_result = None
 
-            st.session_state.search_result = search_result
+            st.session_state.generated_recipe = gen_result
         else:
-            st.session_state.search_result = None
+            st.session_state.generated_recipe = None
 
     # ── Display results from session_state (persists across reruns)
     _display_results()
@@ -249,84 +259,65 @@ def show_user():
 
 
 def _display_results():
-    """Render detected ingredients and recipe results from session_state."""
+    """Render detected ingredients and generated recipe from session_state."""
     all_ingredients = st.session_state.get("detected_ingredients")
 
     if all_ingredients is None:
-        return  # No generation attempted yet
-
-    if not all_ingredients:
-        st.markdown("""
-        <div class="cv-warn" style="margin-top:1rem;">
-            🔍 No se detectaron ingredientes en las fotos proporcionadas.
-            Intenta con una foto diferente donde los ingredientes sean más visibles
-            y estén bien iluminados.
-        </div>
-        """, unsafe_allow_html=True)
         return
 
-    # Show detected ingredients
-    st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div class="cv-card">
-        <h3 style="font-size:1.1rem; margin:0 0 0.75rem;">
-            🧺 Ingredientes detectados
-        </h3>
-    """, unsafe_allow_html=True)
+    if not all_ingredients:
+        st.warning("🔍 No se detectaron ingredientes. Intenta con una foto diferente donde los ingredientes sean más visibles y estén bien iluminados.")
+        return
 
-    for ing in all_ingredients:
-        name_en = ing.get("name_en", "")
-        name_es = ing.get("name_es", "")
-        confidence = ing.get("confidence", 0)
-        pct = int(confidence * 100)
-        label = f"{name_es} ({name_en})" if name_es != name_en else name_en
-        st.markdown(f"""
-        <div style="display:flex; align-items:center; justify-content:space-between;
-                    padding:0.4rem 0; border-bottom:1px solid var(--mist); font-size:0.9rem;">
-            <span><span style="color:var(--amber);">·</span> {label}</span>
-            <span style="font-size:0.78rem; color:var(--sage); font-weight:600;">
-                {pct}%
-            </span>
-        </div>
-        """, unsafe_allow_html=True)
+    # ── Detected ingredients
+    st.divider()
+    st.subheader("🧺 Ingredientes detectados")
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    cols_per_row = 3
+    for i in range(0, len(all_ingredients), cols_per_row):
+        row_items = all_ingredients[i:i + cols_per_row]
+        cols = st.columns(cols_per_row)
+        for j, ing in enumerate(row_items):
+            name_en = ing.get("name_en", "")
+            name_es = ing.get("name_es", "")
+            confidence = ing.get("confidence", 0)
+            pct = int(confidence * 100)
+            label = name_es if name_es != name_en else name_en
+            with cols[j]:
+                st.metric(label=label, value=f"{pct}%", help=f"{name_en} → {name_es}")
 
-    # Show recipe results
-    search_result = st.session_state.get("search_result")
+    # ── Generated recipe
+    gen_result = st.session_state.get("generated_recipe")
 
-    if search_result and search_result.get("results"):
-        st.markdown('<div style="height:1rem"></div>', unsafe_allow_html=True)
-        st.markdown("""
-        <h3 style="font-size:1.1rem; margin:0 0 1rem;">🍽️ Recetas sugeridas</h3>
-        """, unsafe_allow_html=True)
+    if gen_result and gen_result.get("recipe"):
+        st.divider()
+        st.subheader("🧑‍🍳 Receta sugerida por IA")
 
-        for recipe in search_result["results"]:
-            text = recipe.get("text", "")
-            source = recipe.get("source_filename", "")
-            page = recipe.get("page_number", "")
-            score = recipe.get("relevance_score", 0)
-            score_pct = int(score * 100)
+        with st.container(border=True):
+            st.markdown(gen_result["recipe"])
 
-            st.markdown(f"""
-            <div class="cv-card" style="margin-bottom:1rem;">
-                <div style="font-size:0.9rem; line-height:1.6; margin-bottom:0.75rem;">
-                    {text[:500]}{"…" if len(text) > 500 else ""}
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center;
-                            font-size:0.78rem; color:var(--espresso); opacity:0.6;">
-                    <span>📄 {source} · pág. {page}</span>
-                    <span style="color:var(--sage); font-weight:600;">
-                        Relevancia: {score_pct}%
-                    </span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+        # Source references
+        source_chunks = gen_result.get("source_chunks", [])
+        if source_chunks:
+            with st.expander("📚 Recetas de referencia utilizadas"):
+                for chunk in source_chunks:
+                    source = chunk.get("source_filename", "")
+                    page = chunk.get("page_number", "")
+                    score = chunk.get("relevance_score", 0)
+                    st.caption(f"📄 {source} · pág. {page} · Relevancia: {int(score * 100)}%")
 
-    elif search_result:
-        st.markdown("""
-        <div class="cv-info" style="margin-top:1rem;">
-            🔍 No se encontraron recetas que coincidan con los ingredientes detectados.
-            Intenta con otros ingredientes o pide al administrador que cargue más libros de recetas.
-        </div>
-        """, unsafe_allow_html=True)
+        # Debug: raw chunks
+        debug_chunks = gen_result.get("debug_chunks")
+        if debug_chunks:
+            with st.expander("🐛 Debug: Raw chunks from ChromaDB"):
+                for i, chunk in enumerate(debug_chunks):
+                    st.text_area(
+                        f"Chunk {i + 1}",
+                        value=chunk[:600],
+                        height=120,
+                        disabled=True,
+                        key=f"debug_chunk_{i}",
+                    )
+
+    elif gen_result:
+        st.info("🔍 No se encontraron recetas de referencia. Intenta con otros ingredientes o pide al administrador que cargue más libros de recetas.")
