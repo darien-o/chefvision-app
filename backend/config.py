@@ -12,10 +12,12 @@ class Setting(BaseSettings):
   CHROMA_DIR: Path = DATA_DIR / "chroma"
   UPLOAD_DIR: Path = DATA_DIR / "uploads"
   
-  OPEN_API_KEY: str | None = None
+  OPEN_API_KEY: str = "ollama"
+
+  LLM_BASE_URL: str = "http://localhost:11434/v1"
+  LLM_MODEL: str = "gemma3:4b"
 
   EMBEDDING_MODEL: str = "text-embedding3-small"
-  LLM_MODEL: str = "gpt-4-o-mini"
 
   TOP_K: int = 20
   MIN_RELEVANCE_SCORE: float = 0.4
@@ -23,6 +25,14 @@ class Setting(BaseSettings):
   CHUNK_SIZE: int = 1000
   CHUNK_OVERLAP: int = 200
   RECIPE_THRESHOLD: int = 5
+
+  # YOLO model settings
+  YOLO_MODEL_REPO: str = "darien-or/chefVision"
+  YOLO_MODEL_FILENAME: str = "best_v3.pt"
+  YOLO_CONFIDENCE_THRESHOLD: float = 0.2
+
+  # Translation settings
+  INGREDIENT_DICT_PATH: Path | None = None
 
   class Config:
     env_file = ".env"
