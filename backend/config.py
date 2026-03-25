@@ -28,7 +28,7 @@ class Setting(BaseSettings):
 
   # YOLO model settings
   YOLO_MODEL_REPO: str = "darien-or/chefVision"
-  YOLO_MODEL_FILENAME: str = "best_v3.pt"
+  YOLO_MODEL_FILENAME: str = "best.pt"
   YOLO_CONFIDENCE_THRESHOLD: float = 0.2
 
   # Translation settings
